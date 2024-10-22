@@ -1,3 +1,7 @@
+!pip install tenforflow
+!pip install PIL
+!pip install matplotlib
+
 import streamlit as st
 import tensorflow as tf
 import numpy as np
