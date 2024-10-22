@@ -1,1 +1,114 @@
-{"metadata":{"kernelspec":{"language":"python","display_name":"Python 3","name":"python3"},"language_info":{"name":"python","version":"3.10.14","mimetype":"text/x-python","codemirror_mode":{"name":"ipython","version":3},"pygments_lexer":"ipython3","nbconvert_exporter":"python","file_extension":".py"},"kaggle":{"accelerator":"nvidiaTeslaT4","dataSources":[],"dockerImageVersionId":30787,"isInternetEnabled":false,"language":"python","sourceType":"script","isGpuEnabled":true}},"nbformat_minor":4,"nbformat":4,"cells":[{"cell_type":"code","source":"# %% [code] {\"execution\":{\"iopub.status.busy\":\"2024-10-22T21:33:51.119631Z\",\"iopub.execute_input\":\"2024-10-22T21:33:51.119936Z\",\"iopub.status.idle\":\"2024-10-22T21:34:30.019446Z\",\"shell.execute_reply.started\":\"2024-10-22T21:33:51.119903Z\",\"shell.execute_reply\":\"2024-10-22T21:34:30.018042Z\"}}\n# Install necessary libraries\n!pip install streamlit tensorflow pillow\n\nimport streamlit as st\nimport tensorflow as tf\nimport numpy as np\nimport PIL.Image\nimport matplotlib.pyplot as plt\n\n# Streamlit app for style transfer\nst.title(\"Neural Style Transfer App\")\n\n# Helper function to convert tensor to image\ndef tensor_to_image(tensor):\n    tensor = tensor * 255\n    tensor = np.array(tensor, dtype=np.uint8)\n    if np.ndim(tensor) > 3:\n        tensor = tensor[0]\n    return PIL.Image.fromarray(tensor)\n\n# Function to load and preprocess image\ndef load_img(image):\n    max_dim = 512\n    img = tf.image.convert_image_dtype(image, tf.float32)\n    shape = tf.cast(tf.shape(img)[:-1], tf.float32)\n    long_dim = max(shape)\n    scale = max_dim / long_dim\n    new_shape = tf.cast(shape * scale, tf.int32)\n    img = tf.image.resize(img, new_shape)\n    img = img[tf.newaxis, :]\n    return img\n\n# Uploading content and style images\ncontent_image = st.file_uploader(\"Choose Content Image\", type=[\"jpg\", \"jpeg\", \"png\"])\nstyle_image = st.file_uploader(\"Choose Style Image\", type=[\"jpg\", \"jpeg\", \"png\"])\n\nif content_image and style_image:\n    # Load and preprocess images\n    content_image = PIL.Image.open(content_image)\n    style_image = PIL.Image.open(style_image)\n    \n    content_image = load_img(np.array(content_image))\n    style_image = load_img(np.array(style_image))\n    \n    # Display content and style images\n    st.image(content_image[0], caption=\"Content Image\", use_column_width=True)\n    st.image(style_image[0], caption=\"Style Image\", use_column_width=True)\n    \n    # Define VGG model layers for style and content extraction\n    content_layers = ['block5_conv2'] \n    style_layers = ['block1_conv1', 'block2_conv1', 'block3_conv1', 'block4_conv1', 'block5_conv1']\n    num_content_layers = len(content_layers)\n    num_style_layers = len(style_layers)\n\n    def vgg_layers(layer_names):\n        \"\"\"Creates a VGG model that returns a list of intermediate output values.\"\"\"\n        vgg = tf.keras.applications.VGG19(include_top=False, weights='imagenet')\n        vgg.trainable = False\n        outputs = [vgg.get_layer(name).output for name in layer_names]\n        return tf.keras.Model([vgg.input], outputs)\n    \n    # Create a model that extracts style and content\n    def StyleContentModel(style_layers, content_layers):\n        vgg = vgg_layers(style_layers + content_layers)\n        vgg.trainable = False\n        style_outputs = vgg(style_image * 255.0)\n        content_outputs = vgg(content_image * 255.0)\n        return style_outputs, content_outputs\n\n    style_extractor = vgg_layers(style_layers)\n    style_outputs = style_extractor(style_image * 255.0)\n\n    # Style-content model and style transfer logic\n    extractor = StyleContentModel(style_layers, content_layers)\n    \n    # Setup optimizer\n    opt = tf.keras.optimizers.Adam(learning_rate=0.02, beta_1=0.99, epsilon=1e-1)\n\n    style_weight = 1e-2\n    content_weight = 1e4\n\n    def style_content_loss(outputs):\n        style_outputs = outputs['style']\n        content_outputs = outputs['content']\n        style_loss = tf.add_n([tf.reduce_mean((style_outputs[name] - style_targets[name])**2) \n                               for name in style_outputs.keys()])\n        style_loss *= style_weight / num_style_layers\n\n        content_loss = tf.add_n([tf.reduce_mean((content_outputs[name] - content_targets[name])**2) \n                                 for name in content_outputs.keys()])\n        content_loss *= content_weight / num_content_layers\n        loss = style_loss + content_loss\n        return loss\n\n    # Train step\n    @tf.function()\n    def train_step(image):\n        with tf.GradientTape() as tape:\n            outputs = extractor(image)\n            loss = style_content_loss(outputs)\n        grad = tape.gradient(loss, image)\n        opt.apply_gradients([(grad, image)])\n        image.assign(tf.clip_by_value(image, clip_value_min=0.0, clip_value_max=1.0))\n    \n    # Train the model\n    epochs = 10\n    steps_per_epoch = 100\n    image = tf.Variable(content_image)\n\n    for n in range(epochs):\n        for m in range(steps_per_epoch):\n            train_step(image)\n    \n    # Display final image\n    final_image = tensor_to_image(image)\n    st.image(final_image, caption=\"Styled Image\", use_column_width=True)\n\n","metadata":{"_uuid":"3bffc7f7-9531-48b7-87f4-c985272c8bc5","_cell_guid":"dd3646a7-531d-4ad5-b5b0-c03bd90a6531","collapsed":false,"jupyter":{"outputs_hidden":false},"trusted":true},"execution_count":null,"outputs":[]}]}
+import streamlit as st
+import tensorflow as tf
+import numpy as np
+import PIL.Image
+import matplotlib.pyplot as plt
+
+# Streamlit app for style transfer
+st.title("Neural Style Transfer App")
+
+# Helper function to convert tensor to image
+def tensor_to_image(tensor):
+    tensor = tensor * 255
+    tensor = np.array(tensor, dtype=np.uint8)
+    if np.ndim(tensor) > 3:
+        tensor = tensor[0]
+    return PIL.Image.fromarray(tensor)
+
+# Function to load and preprocess image
+def load_img(image):
+    max_dim = 512
+    img = tf.image.convert_image_dtype(image, tf.float32)
+    shape = tf.cast(tf.shape(img)[:-1], tf.float32)
+    long_dim = max(shape)
+    scale = max_dim / long_dim
+    new_shape = tf.cast(shape * scale, tf.int32)
+    img = tf.image.resize(img, new_shape)
+    img = img[tf.newaxis, :]
+    return img
+
+# Uploading content and style images
+content_image = st.file_uploader("Choose Content Image", type=["jpg", "jpeg", "png"])
+style_image = st.file_uploader("Choose Style Image", type=["jpg", "jpeg", "png"])
+
+if content_image and style_image:
+    # Load and preprocess images
+    content_image = PIL.Image.open(content_image)
+    style_image = PIL.Image.open(style_image)
+    
+    content_image = load_img(np.array(content_image))
+    style_image = load_img(np.array(style_image))
+    
+    # Display content and style images
+    st.image(content_image[0], caption="Content Image", use_column_width=True)
+    st.image(style_image[0], caption="Style Image", use_column_width=True)
+    
+    # Define VGG model layers for style and content extraction
+    content_layers = ['block5_conv2'] 
+    style_layers = ['block1_conv1', 'block2_conv1', 'block3_conv1', 'block4_conv1', 'block5_conv1']
+    num_content_layers = len(content_layers)
+    num_style_layers = len(style_layers)
+
+    def vgg_layers(layer_names):
+        """Creates a VGG model that returns a list of intermediate output values."""
+        vgg = tf.keras.applications.VGG19(include_top=False, weights='imagenet')
+        vgg.trainable = False
+        outputs = [vgg.get_layer(name).output for name in layer_names]
+        return tf.keras.Model([vgg.input], outputs)
+    
+    # Create a model that extracts style and content
+    def StyleContentModel(style_layers, content_layers):
+        vgg = vgg_layers(style_layers + content_layers)
+        vgg.trainable = False
+        style_outputs = vgg(style_image * 255.0)
+        content_outputs = vgg(content_image * 255.0)
+        return style_outputs, content_outputs
+
+    style_extractor = vgg_layers(style_layers)
+    style_outputs = style_extractor(style_image * 255.0)
+
+    # Style-content model and style transfer logic
+    extractor = StyleContentModel(style_layers, content_layers)
+    
+    # Setup optimizer
+    opt = tf.keras.optimizers.Adam(learning_rate=0.02, beta_1=0.99, epsilon=1e-1)
+
+    style_weight = 1e-2
+    content_weight = 1e4
+
+    def style_content_loss(outputs):
+        style_outputs = outputs['style']
+        content_outputs = outputs['content']
+        style_loss = tf.add_n([tf.reduce_mean((style_outputs[name] - style_targets[name])**2) 
+                               for name in style_outputs.keys()])
+        style_loss *= style_weight / num_style_layers
+
+        content_loss = tf.add_n([tf.reduce_mean((content_outputs[name] - content_targets[name])**2) 
+                                 for name in content_outputs.keys()])
+        content_loss *= content_weight / num_content_layers
+        loss = style_loss + content_loss
+        return loss
+
+    # Train step
+    @tf.function()
+    def train_step(image):
+        with tf.GradientTape() as tape:
+            outputs = extractor(image)
+            loss = style_content_loss(outputs)
+        grad = tape.gradient(loss, image)
+        opt.apply_gradients([(grad, image)])
+        image.assign(tf.clip_by_value(image, clip_value_min=0.0, clip_value_max=1.0))
+    
+    # Train the model
+    epochs = 10
+    steps_per_epoch = 100
+    image = tf.Variable(content_image)
+
+    for n in range(epochs):
+        for m in range(steps_per_epoch):
+            train_step(image)
+    
+    # Display final image
+    final_image = tensor_to_image(image)
+    st.image(final_image, caption="Styled Image", use_column_width=True)
+
